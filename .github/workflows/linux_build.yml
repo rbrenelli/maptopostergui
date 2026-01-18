@@ -1,0 +1,131 @@
+name: Build Linux AppImage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+          - arch: aarch64
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Setup QEMU for multi-architecture builds if target is aarch64
+    - name: Set up QEMU
+      if: matrix.arch == 'aarch64'
+      uses: docker/setup-qemu-action@v3
+
+    # We use a docker container for the build environment to ensure consistency
+    # and to easily handle the cross-compilation/emulation for aarch64.
+
+    - name: Build in Docker
+      uses: addnab/docker-run-action@v3
+      with:
+        image: python:3.12-bookworm
+        # For aarch64, this will automatically use QEMU if set up correctly
+        # But we need to specify the platform for the image pull
+        options: --platform linux/${{ matrix.arch }} -v ${{ github.workspace }}:/app -w /app
+        run: |
+          set -e
+          set -x
+
+          apt-get update && apt-get install -y --no-install-recommends \
+            build-essential \
+            libspatialindex-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libgomp1 \
+            libxkbcommon-x11-0 \
+            libdbus-1-3 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-image0 \
+            libxcb-xinput0 \
+            libglib2.0-0 \
+            libsm6 \
+            libice6 \
+            libfontconfig1 \
+            libxrender1 \
+            wget \
+            file \
+            zlib1g-dev \
+            fuse
+
+          # Install AppImage tools dependencies
+          # AppImage creation inside docker requires FUSE or extraction
+
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+          # Smoke Test: Verify imports work in the environment before building
+          echo "Running Smoke Test..."
+          python -c "import PyQt6.QtWidgets; import osmnx; import geopandas; import matplotlib.pyplot; print('Imports successful')"
+
+          pyinstaller build.spec
+
+          # Verify PyInstaller output
+          ls -R dist/
+
+          # AppImage Creation
+          mkdir -p AppDir/usr/bin
+          cp -r dist/CityMapPoster/* AppDir/usr/bin/
+
+          cat > AppDir/city-map-poster.desktop <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=CityMapPoster
+          Exec=CityMapPoster
+          Icon=utilities-terminal
+          Categories=Utility;
+          EOF
+
+          cat > AppDir/AppRun <<EOF
+          #!/bin/bash
+          HERE="\$(dirname "\$(readlink -f "\${0}")")"
+          export LD_LIBRARY_PATH="\${HERE}/usr/lib:\$LD_LIBRARY_PATH"
+          exec "\${HERE}/usr/bin/CityMapPoster" "\$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+          # Generate a simple 1x1 valid PNG icon using python
+          python -c "import base64; open('AppDir/utilities-terminal.png', 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=='))"
+
+          # Download appimagetool for the correct architecture
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool.AppImage
+          else
+            wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage -O appimagetool.AppImage
+          fi
+          chmod +x appimagetool.AppImage
+
+          # AppImage creation often fails in Docker due to FUSE.
+          # We can use --appimage-extract-and-run to run appimagetool without FUSE
+          # But generating the AppImage itself requires FUSE unless we extract appimagetool and run AppRun.
+
+          ./appimagetool.AppImage --appimage-extract
+          mv squashfs-root appimagetool-dir
+
+          # ARCH needs to be set for appimagetool
+          export ARCH=${{ matrix.arch }}
+          ./appimagetool-dir/AppRun --no-appimage-verbose AppDir CityMapPoster-${{ matrix.arch }}.AppImage
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: CityMapPoster-${{ matrix.arch }}.AppImage
+        path: CityMapPoster-${{ matrix.arch }}.AppImage
