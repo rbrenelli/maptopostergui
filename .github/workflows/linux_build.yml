@@ -35,6 +35,9 @@ jobs:
         # But we need to specify the platform for the image pull
         options: --platform linux/${{ matrix.arch }} -v ${{ github.workspace }}:/app -w /app
         run: |
+          set -e
+          set -x
+
           apt-get update && apt-get install -y --no-install-recommends \
             build-essential \
             libspatialindex-dev \
@@ -51,6 +54,13 @@ jobs:
             libxcb-shape0 \
             libxcb-xfixes0 \
             libxcb-xinerama0 \
+            libxcb-image0 \
+            libxcb-xinput0 \
+            libglib2.0-0 \
+            libsm6 \
+            libice6 \
+            libfontconfig1 \
+            libxrender1 \
             wget \
             file \
             zlib1g-dev \
@@ -63,6 +73,9 @@ jobs:
           pip install -r requirements.txt
 
           pyinstaller build.spec
+
+          # Verify PyInstaller output
+          ls -R dist/
 
           # AppImage Creation
           mkdir -p AppDir/usr/bin
