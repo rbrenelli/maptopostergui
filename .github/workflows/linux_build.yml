@@ -1,0 +1,108 @@
+name: Build Linux AppImage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+          - arch: aarch64
+
+    steps:
+    - uses: actions/checkout@v3
+
+    # Setup QEMU for multi-architecture builds if target is aarch64
+    - name: Set up QEMU
+      if: matrix.arch == 'aarch64'
+      uses: docker/setup-qemu-action@v2
+
+    # We use a docker container for the build environment to ensure consistency
+    # and to easily handle the cross-compilation/emulation for aarch64.
+    # However, running QEMU is slow.
+    # A simpler approach for this task is to run steps directly on the runner for x86_64
+    # and use a container for aarch64.
+
+    # For simplicity and to use the same steps, we will run everything inside a container
+    # that matches the target architecture.
+
+    - name: Build in Docker
+      uses: addnab/docker-run-action@v3
+      with:
+        image: python:3.12-slim-bookworm
+        # For aarch64, this will automatically use QEMU if set up correctly
+        # But we need to specify the platform for the image pull
+        options: --platform linux/${{ matrix.arch }} -v ${{ github.workspace }}:/app -w /app
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            build-essential \
+            libspatialindex-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libgomp1 \
+            wget \
+            file \
+            zlib1g-dev \
+            fuse
+
+          # Install AppImage tools dependencies
+          # AppImage creation inside docker requires FUSE or extraction
+
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+          pyinstaller build.spec
+
+          # AppImage Creation
+          mkdir -p AppDir/usr/bin
+          cp -r dist/CityMapPoster/* AppDir/usr/bin/
+
+          cat > AppDir/city-map-poster.desktop <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=CityMapPoster
+          Exec=CityMapPoster
+          Icon=utilities-terminal
+          Categories=Utility;
+          EOF
+
+          cat > AppDir/AppRun <<EOF
+          #!/bin/bash
+          HERE="\$(dirname "\$(readlink -f "\${0}")")"
+          export LD_LIBRARY_PATH="\${HERE}/usr/lib:\$LD_LIBRARY_PATH"
+          exec "\${HERE}/usr/bin/CityMapPoster" "\$@"
+          EOF
+          chmod +x AppDir/AppRun
+          touch AppDir/utilities-terminal.png
+
+          # Download appimagetool for the correct architecture
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool.AppImage
+          else
+            wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage -O appimagetool.AppImage
+          fi
+          chmod +x appimagetool.AppImage
+
+          # AppImage creation often fails in Docker due to FUSE.
+          # We can use --appimage-extract-and-run to run appimagetool without FUSE
+          # But generating the AppImage itself requires FUSE unless we extract appimagetool and run AppRun.
+
+          ./appimagetool.AppImage --appimage-extract
+          mv squashfs-root appimagetool-dir
+
+          # ARCH needs to be set for appimagetool
+          export ARCH=${{ matrix.arch }}
+          ./appimagetool-dir/AppRun --no-appimage-verbose AppDir CityMapPoster-${{ matrix.arch }}.AppImage
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: CityMapPoster-${{ matrix.arch }}.AppImage
+        path: CityMapPoster-${{ matrix.arch }}.AppImage
