@@ -122,7 +122,7 @@ jobs:
 
           # ARCH needs to be set for appimagetool
           export ARCH=${{ matrix.arch }}
-          ./appimagetool-dir/AppRun --no-appimage-verbose AppDir CityMapPoster-${{ matrix.arch }}.AppImage
+          ./appimagetool-dir/AppRun AppDir CityMapPoster-${{ matrix.arch }}.AppImage
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
