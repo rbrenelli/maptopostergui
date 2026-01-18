@@ -30,7 +30,7 @@ jobs:
     - name: Build in Docker
       uses: addnab/docker-run-action@v3
       with:
-        image: python:3.12-slim-bookworm
+        image: python:3.12-bookworm
         # For aarch64, this will automatically use QEMU if set up correctly
         # But we need to specify the platform for the image pull
         options: --platform linux/${{ matrix.arch }} -v ${{ github.workspace }}:/app -w /app
@@ -71,6 +71,10 @@ jobs:
 
           pip install --upgrade pip
           pip install -r requirements.txt
+
+          # Smoke Test: Verify imports work in the environment before building
+          echo "Running Smoke Test..."
+          python -c "import PyQt6.QtWidgets; import osmnx; import geopandas; import matplotlib.pyplot; print('Imports successful')"
 
           pyinstaller build.spec
 
