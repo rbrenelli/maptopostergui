@@ -41,6 +41,16 @@ jobs:
             libegl1-mesa-dev \
             libgl1-mesa-dev \
             libgomp1 \
+            libxkbcommon-x11-0 \
+            libdbus-1-3 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
             wget \
             file \
             zlib1g-dev \
@@ -74,7 +84,9 @@ jobs:
           exec "\${HERE}/usr/bin/CityMapPoster" "\$@"
           EOF
           chmod +x AppDir/AppRun
-          touch AppDir/utilities-terminal.png
+
+          # Generate a simple 1x1 valid PNG icon using python
+          python -c "import base64; open('AppDir/utilities-terminal.png', 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=='))"
 
           # Download appimagetool for the correct architecture
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
