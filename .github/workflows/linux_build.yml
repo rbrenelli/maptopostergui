@@ -17,21 +17,15 @@ jobs:
           - arch: aarch64
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     # Setup QEMU for multi-architecture builds if target is aarch64
     - name: Set up QEMU
       if: matrix.arch == 'aarch64'
-      uses: docker/setup-qemu-action@v2
+      uses: docker/setup-qemu-action@v3
 
     # We use a docker container for the build environment to ensure consistency
     # and to easily handle the cross-compilation/emulation for aarch64.
-    # However, running QEMU is slow.
-    # A simpler approach for this task is to run steps directly on the runner for x86_64
-    # and use a container for aarch64.
-
-    # For simplicity and to use the same steps, we will run everything inside a container
-    # that matches the target architecture.
 
     - name: Build in Docker
       uses: addnab/docker-run-action@v3
@@ -102,7 +96,7 @@ jobs:
           ./appimagetool-dir/AppRun --no-appimage-verbose AppDir CityMapPoster-${{ matrix.arch }}.AppImage
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: CityMapPoster-${{ matrix.arch }}.AppImage
         path: CityMapPoster-${{ matrix.arch }}.AppImage
